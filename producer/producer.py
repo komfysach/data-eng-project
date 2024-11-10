@@ -4,7 +4,7 @@ import json
 import time
 
 # Initialize Kafka producer
-producer = Producer({'bootstrap.servers': '172.19.0.4:9092'})
+producer = Producer({'bootstrap.servers': 'localhost:9092'})
 
 # Print thaT the producer is ready
 print('Kafka producer is ready', producer)
