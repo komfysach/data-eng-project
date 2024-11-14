@@ -2,11 +2,15 @@ from confluent_kafka import Producer
 import pandas as pd
 import json
 import time
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Initialize Kafka producer
 producer = Producer({'bootstrap.servers': 'localhost:9092'})
 
-# Print thaT the producer is ready
+# Print that the producer is ready
 print('Kafka producer is ready', producer)
 
 # Delivery report callback
@@ -16,25 +20,39 @@ def delivery_report(err, msg):
     else:
         print('Message delivered to {} [{}]'.format(msg.topic(), msg.partition()))
 
-# Load the dataset
-data = pd.read_csv('data/iot_telemetry_data.csv')
-
-# Print the first 5 rows of the dataset
-print(data.head())
-
-# Simulate real-time data ingestion
-for _, row in data.iterrows():
-    message = row.to_dict()
-    print(f"Producing message: {message}")  # Log the message being produced
+def produce_messages(producer, data):
     try:
-        producer.produce('sensor-data', value=json.dumps(message).encode('utf-8'), callback=delivery_report)
-        producer.poll(0)
+        # Simulate real-time data ingestion
+        for _, row in data.iterrows():
+            message = row.to_dict()
+            try:
+                producer.produce(
+                    topic='sensor-data',
+                    key=str(row['ts']),
+                    value=json.dumps(message),
+                    callback=delivery_report
+                )
+                producer.flush()
+                time.sleep(1)
+                logging.info(f"Produced message: {message}")
+            except Exception as e:
+                logging.error(f"Error producing message: {e}")
     except Exception as e:
-        print(f"Failed to produce message: {e}")
-    time.sleep(1)  # Simulate real-time data stream
+        logging.critical(f"Unhandled exception: {e}")
+    finally:
+        producer.flush()
+        logging.info("Producer script completed.")
 
-# Flush producer
-try:
-    producer.flush()
-except Exception as e:
-    print(f"Failed to flush producer: {e}")
+if __name__ == "__main__":
+    # Load the dataset
+    try:
+        data = pd.read_csv('data/iot_telemetry_data.csv')
+        logging.info("Dataset loaded successfully.")
+    except FileNotFoundError as e:
+        logging.error(f"Dataset not found: {e}")
+        raise
+
+    # Print the first 5 rows of the dataset
+    print(data.head())
+
+    produce_messages(producer, data)
