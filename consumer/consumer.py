@@ -28,7 +28,7 @@ org = "iu"
 url = "http://localhost:8086"
 influxdb_client = InfluxDBClient(url=url, token=token, org=org)
 write_api = influxdb_client.write_api(write_options=WriteOptions(batch_size=1))
-bucket = "sensor-data"
+bucket = "sensor_data"
 
 def consume_and_process_messages(consumer, write_api, max_iterations=None):
     iterations = 0
@@ -57,16 +57,17 @@ def consume_and_process_messages(consumer, write_api, max_iterations=None):
                 timestamp = int(data['ts'])
                 logging.info(f"Parsed timestamp: {timestamp}")
 
-                point = Point("sensor_measurement") \
-                    .tag("device", data['device']) \
-                    .field("co", data['co']) \
-                    .field("humidity", data['humidity']) \
-                    .field("light", int(data['light'])) \
-                    .field("lpg", data['lpg']) \
-                    .field("motion", int(data['motion'])) \
-                    .field("smoke", data['smoke']) \
-                    .field("temp", data['temp']) \
-                    .time(timestamp, write_precision='s')
+                point = (
+                    Point("sensor_measurement")
+                    .tag("device", data['device'])
+                    .field("co", data['co'])
+                    .field("humidity", data['humidity'])
+                    .field("light", int(data['light']))
+                    .field("lpg", data['lpg'])
+                    .field("motion", int(data['motion']))
+                    .field("smoke", data['smoke'])
+                    .field("temp", data['temp'])
+                )
 
                 write_api.write(bucket=bucket, record=point)
                 logging.info(f"Consumed and written data to InfluxDB: {data}")
