@@ -4,7 +4,7 @@ import producer.producer as producer_module
 import pandas as pd
 
 class TestKafkaProducer(unittest.TestCase):
-    @patch('producer.producer.Producer')  # Replace with the actual module path
+    @patch('producer.producer.producer')
     def test_producer_sends_message(self, MockProducer):
         # Mock Kafka producer
         mock_producer_instance = MockProducer.return_value

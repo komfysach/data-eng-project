@@ -1,8 +1,18 @@
 import pytest
 from influxdb_client import InfluxDBClient, QueryApi
 import pandas as pd
+from app import get_data
+from dotenv import load_dotenv
+import os
 
-influxdb_client = InfluxDBClient(url="http://localhost:8086", token="", org="")
+# Load environment variables from .env file
+load_dotenv()
+
+# InfluxDB client setup
+token = os.getenv("INFLUXDB_TOKEN")
+org = "iu"
+url = "http://localhost:8086"
+influxdb_client = InfluxDBClient(url=url, token=token, org=org)
 query_api = influxdb_client.query_api()
 
 def test_influxdb_connection():
@@ -13,30 +23,7 @@ def test_influxdb_connection():
         pytest.fail(f"InfluxDB connection failed: {e}")
 
 def test_get_data():
-    query = '''
-    from(bucket:"sensor_data")
-    |> range(start: -1h)
-    |> filter(fn: (r) => r._measurement == "sensor_measurement")
-    '''
-    result = query_api.query(org="", query=query)
-
-    data = {
-        "time": [],
-        "temp": [],
-        "humidity": [],
-        "motion": []
-    }
-    for table in result:
-        for record in table.records:
-            data["time"].append(record.get_time())
-            if record.get_field() == "temp":
-                data["temp"].append(record.get_value())
-            elif record.get_field() == "humidity":
-                data["humidity"].append(record.get_value())
-            elif record.get_field() == "motion":
-                data["motion"].append(record.get_value())
-
-    df = pd.DataFrame(data)
+    df = get_data()
     assert not df.empty, "Data retrieval failed, DataFrame is empty"
 
 def test_threshold_logic():
