@@ -30,7 +30,12 @@ do {
     $health = Invoke-RestMethod -Uri http://localhost:8086/health -UseBasicParsing
 } while ($health.status -ne "pass")
 
-# Step 5: Load environment variables from .env file and set up InfluxDB
+# Step 5: Prompt for username and password
+$username = Read-Host -Prompt "Enter InfluxDB username"
+$password = Read-Host -Prompt "Enter InfluxDB password" -AsSecureString
+$passwordPlain = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($password))
+
+# Load environment variables from .env file and set up InfluxDB
 $envFilePath = ".env"
 $envContent = Get-Content -Path $envFilePath
 $tokenPattern = "INFLUXDB_TOKEN=(.*)"
@@ -42,12 +47,12 @@ if ($tokenMatch) {
 } else {
     Write-Host "Token not found in .env file. Setting up InfluxDB using HTTP API..."
     try {
-        $response = Invoke-RestMethod -Uri "http://localhost:8086/api/v2/setup" -Method Post -ContentType "application/json" -Body '{
-            "username": "admin",
-            "password": "admin123",
-            "org": "iu",
-            "bucket": "sensor_data"
-        }'
+        $response = Invoke-RestMethod -Uri "http://localhost:8086/api/v2/setup" -Method Post -ContentType "application/json" -Body (@{
+            username = $username
+            password = $passwordPlain
+            org = "iu"
+            bucket = "sensor_data"
+        } | ConvertTo-Json)
         $token = $response.auth.token
         if (-not $token) {
             Write-Host "Failed to create token. Exiting."
