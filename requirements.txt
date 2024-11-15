@@ -1,2 +1,8 @@
-kafka-python
+confluent-kafka
 pandas
+influx-client
+streamlit
+streamlit_autorefresh
+plotly
+dotenv
+jq
