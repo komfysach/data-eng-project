@@ -4,5 +4,5 @@ influx-client
 streamlit
 streamlit_autorefresh
 plotly
-dotenv
+python-dotenv
 jq
