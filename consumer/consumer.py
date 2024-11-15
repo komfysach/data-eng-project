@@ -1,7 +1,6 @@
 import logging
-from confluent_kafka import Consumer, KafkaException
-from influxdb_client import InfluxDBClient, Point, WritePrecision
-from influxdb_client.client.write_api import SYNCHRONOUS
+from confluent_kafka import Consumer, KafkaException, KafkaError
+from influxdb_client import InfluxDBClient, Point, WriteOptions
 import json
 import os
 from dotenv import load_dotenv
@@ -28,17 +27,22 @@ token = os.getenv("INFLUXDB_TOKEN")
 org = "iu"
 url = "http://localhost:8086"
 influxdb_client = InfluxDBClient(url=url, token=token, org=org)
-write_api = influxdb_client.write_api(write_options=SYNCHRONOUS)
-bucket = "sensor_data"
+write_api = influxdb_client.write_api(write_options=WriteOptions(batch_size=1))
+bucket = "sensor-data"
 
-def consume_and_process_messages(consumer, write_api):
+def consume_and_process_messages(consumer, write_api, max_iterations=None):
+    iterations = 0
     try:
         while True:
+            if max_iterations is not None and iterations >= max_iterations:
+                break
+            iterations += 1
+
             msg = consumer.poll(1.0)
             if msg is None:
                 continue
             if msg.error():
-                if msg.error().code() == KafkaException._PARTITION_EOF:
+                if msg.error().code() == KafkaError._PARTITION_EOF:
                     continue
                 else:
                     logging.error(f"Consumer error: {msg.error()}")
@@ -53,20 +57,18 @@ def consume_and_process_messages(consumer, write_api):
                 timestamp = int(data['ts'])
                 logging.info(f"Parsed timestamp: {timestamp}")
 
-                point = (
-                    Point("sensor_measurement")
-                    .tag("device", data['device'])
-                    .field("co", data['co'])
-                    .field("humidity", data['humidity'])
-                    .field("light", int(data['light']))
-                    .field("lpg", data['lpg'])
-                    .field("motion", int(data['motion']))
-                    .field("smoke", data['smoke'])
-                    .field("temp", data['temp'])
-                )
+                point = Point("sensor_measurement") \
+                    .tag("device", data['device']) \
+                    .field("co", data['co']) \
+                    .field("humidity", data['humidity']) \
+                    .field("light", int(data['light'])) \
+                    .field("lpg", data['lpg']) \
+                    .field("motion", int(data['motion'])) \
+                    .field("smoke", data['smoke']) \
+                    .field("temp", data['temp']) \
+                    .time(timestamp, write_precision='s')
 
-                write_api.write(bucket=bucket, org=org, record=point)
-                logging.info(f"Point data written to InfluxDB: {point.to_line_protocol()}")
+                write_api.write(bucket=bucket, record=point)
                 logging.info(f"Consumed and written data to InfluxDB: {data}")
                 time.sleep(1)
             except Exception as e:
