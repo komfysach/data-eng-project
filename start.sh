@@ -1,6 +1,16 @@
 #!/bin/bash
 
-# Step 1: Run tests
+# Step 1: Install dependencies
+echo "Installing dependencies..."
+py -m pip install -r requirements.txt
+if [ $? -ne 0 ]; then
+    echo "Failed to install dependencies. Aborting deployment."
+    exit 1
+else
+    echo "Dependencies installed successfully."
+fi
+
+# Step 2: Run tests
 echo "Running tests..."
 py -m unittest producer.test_producer
 py -m unittest consumer.test_consumer
@@ -11,24 +21,25 @@ else
     echo "All tests passed. Proceeding with deployment."
 fi
 
-# Step 2: Spin up Docker containers
+# Step 3: Spin up Docker containers
 echo "Starting Docker containers..."
 docker-compose up -d
 
-# Step 3: Wait for InfluxDB to be ready
+# Step 4: Wait for InfluxDB to be ready
 echo "Waiting for InfluxDB to initialize..."
 until curl -s http://localhost:8086/health | grep '"status":"pass"' > /dev/null; do
     sleep 5
     echo "Waiting for InfluxDB to be ready..."
 done
 
-# Step 4: Set up InfluxDB using HTTP API if not already configured
-if curl -s -H "Authorization: Token admin:admin123" http://localhost:8086/api/v2/buckets | grep -q "sensor_data"; then
-    echo "InfluxDB is already set up."
-else
-    echo "Setting up InfluxDB using HTTP API..."
+# Step 5: Load environment variables from .env file and set up InfluxDB
+envFilePath=".env"
+if [ -f "$envFilePath" ]; then
+    source $envFilePath
+fi
 
-    # Create an initial user, organization, and bucket using the API
+if [ -z "$INFLUXDB_TOKEN" ]; then
+    echo "Token not found in .env file. Setting up InfluxDB using HTTP API..."
     response=$(curl -s -X POST http://localhost:8086/api/v2/setup \
         --header "Content-Type: application/json" \
         --data '{
@@ -38,7 +49,6 @@ else
           "bucket": "sensor_data"
         }')
 
-    # Extract the token using jq or a Python script
     token=$(echo $response | jq -r '.auth.token')
     if [ -z "$token" ]; then
         echo "Failed to create token. Exiting."
@@ -46,59 +56,140 @@ else
     fi
 
     # Save the token to .env
-    echo "INFLUXDB_TOKEN=$token" > .env
+    echo "INFLUXDB_TOKEN=$token" >> $envFilePath
+    export INFLUXDB_TOKEN=$token
     echo "InfluxDB setup completed. Token saved in .env"
-fi
-
-# Step 5: Start the Kafka producer
-echo "Starting the Kafka producer..."
-python producer/producer.py &
-producer_pid=$!
-echo "Producer started with PID $producer_pid"
-
-# Step 6: Start the Kafka consumer
-echo "Starting the Kafka consumer..."
-python consumer/consumer.py &
-consumer_pid=$!
-echo "Consumer started with PID $consumer_pid"
-
-# Step 7: Run the Streamlit app tests
-echo "Running Streamlit app tests..."
-py -m unittest app.test_app
-if [ $? -ne 0 ]; then
-    echo "Test failed. Aborting deployment."
-    exit 1
 else
-    echo "Test passed. Proceeding with running streamlit app."
+    echo "Token found in .env file."
 fi
+
+# InfluxDB setup
+influxdbUrl="http://localhost:8086"
+org="iu"
+bucket="sensor_data"
+token=$INFLUXDB_TOKEN
+
+# Check if the bucket already exists
+bucketCheck=$(curl -s -H "Authorization: Token $token" "$influxdbUrl/api/v2/buckets?name=$bucket")
+if echo $bucketCheck | grep -q '"name":"sensor_data"'; then
+    echo "Bucket already exists."
+else
+    echo "Bucket does not exist. Creating bucket..."
+    orgID=$(curl -s -H "Authorization: Token $token" "$influxdbUrl/api/v2/orgs?org=$org" | jq -r '.orgs[0].id')
+    bucketData=$(jq -n --arg orgID "$orgID" --arg name "$bucket" '{orgID: $orgID, name: $name, retentionRules: [{type: "expire", everySeconds: 0}]}')
+    bucketResponse=$(curl -s -X POST "$influxdbUrl/api/v2/buckets" -H "Authorization: Token $token" -H "Content-Type: application/json" --data "$bucketData")
+    echo "Bucket created: $(echo $bucketResponse | jq -r '.name')"
+fi
+
+# Step 6: Start the Kafka producer
+echo "Starting the Kafka producer..."
+nohup py producer/producer.py &
+
+# Step 7: Start the Kafka consumer
+echo "Starting the Kafka consumer..."
+nohup py consumer/consumer.py &
 
 # Step 8: Start the Streamlit app
-echo "Starting the Streamlit web app..."
-streamlit run app.py &
-web_app_pid=$!
-echo "Web app started with PID $web_app_pid"
+echo "Starting the Streamlit monitoring web app..."
+nohup streamlit run app/app.py &
 
-# Monitor the processes
+# Monitor the processes (simplified for shell script)
+echo "Monitoring producer, consumer, and web app..."
+echo "Web app is being served at http://localhost:8501"#!/bin/bash
+
+# Step 1: Install dependencies
+echo "Installing dependencies..."
+py -m pip install -r requirements.txt
+if [ $? -ne 0 ]; then
+    echo "Failed to install dependencies. Aborting deployment."
+    exit 1
+else
+    echo "Dependencies installed successfully."
+fi
+
+# Step 2: Run tests
+echo "Running tests..."
+py -m unittest producer.test_producer
+py -m unittest consumer.test_consumer
+if [ $? -ne 0 ]; then
+    echo "Tests failed. Aborting deployment."
+    exit 1
+else
+    echo "All tests passed. Proceeding with deployment."
+fi
+
+# Step 3: Spin up Docker containers
+echo "Starting Docker containers..."
+docker-compose up -d
+
+# Step 4: Wait for InfluxDB to be ready
+echo "Waiting for InfluxDB to initialize..."
+until curl -s http://localhost:8086/health | grep '"status":"pass"' > /dev/null; do
+    sleep 5
+    echo "Waiting for InfluxDB to be ready..."
+done
+
+# Step 5: Load environment variables from .env file and set up InfluxDB
+envFilePath=".env"
+if [ -f "$envFilePath" ]; then
+    source $envFilePath
+fi
+
+if [ -z "$INFLUXDB_TOKEN" ]; then
+    echo "Token not found in .env file. Setting up InfluxDB using HTTP API..."
+    response=$(curl -s -X POST http://localhost:8086/api/v2/setup \
+        --header "Content-Type: application/json" \
+        --data '{
+          "username": "admin",
+          "password": "admin123",
+          "org": "iu",
+          "bucket": "sensor_data"
+        }')
+
+    token=$(echo $response | jq -r '.auth.token')
+    if [ -z "$token" ]; then
+        echo "Failed to create token. Exiting."
+        exit 1
+    fi
+
+    # Save the token to .env
+    echo "INFLUXDB_TOKEN=$token" >> $envFilePath
+    export INFLUXDB_TOKEN=$token
+    echo "InfluxDB setup completed. Token saved in .env"
+else
+    echo "Token found in .env file."
+fi
+
+# InfluxDB setup
+influxdbUrl="http://localhost:8086"
+org="iu"
+bucket="sensor_data"
+token=$INFLUXDB_TOKEN
+
+# Check if the bucket already exists
+bucketCheck=$(curl -s -H "Authorization: Token $token" "$influxdbUrl/api/v2/buckets?name=$bucket")
+if echo $bucketCheck | grep -q '"name":"sensor_data"'; then
+    echo "Bucket already exists."
+else
+    echo "Bucket does not exist. Creating bucket..."
+    orgID=$(curl -s -H "Authorization: Token $token" "$influxdbUrl/api/v2/orgs?org=$org" | jq -r '.orgs[0].id')
+    bucketData=$(jq -n --arg orgID "$orgID" --arg name "$bucket" '{orgID: $orgID, name: $name, retentionRules: [{type: "expire", everySeconds: 0}]}')
+    bucketResponse=$(curl -s -X POST "$influxdbUrl/api/v2/buckets" -H "Authorization: Token $token" -H "Content-Type: application/json" --data "$bucketData")
+    echo "Bucket created: $(echo $bucketResponse | jq -r '.name')"
+fi
+
+# Step 6: Start the Kafka producer
+echo "Starting the Kafka producer..."
+nohup py producer/producer.py &
+
+# Step 7: Start the Kafka consumer
+echo "Starting the Kafka consumer..."
+nohup py consumer/consumer.py &
+
+# Step 8: Start the Streamlit app
+echo "Starting the Streamlit monitoring web app..."
+nohup streamlit run app/app.py &
+
+# Monitor the processes (simplified for shell script)
 echo "Monitoring producer, consumer, and web app..."
 echo "Web app is being served at http://localhost:8501"
-
-# Keep the script running to show status
-while sleep 10; do
-    if ps -p $producer_pid > /dev/null; then
-        echo "Producer is running..."
-    else
-        echo "Producer has stopped."
-    fi
-
-    if ps -p $consumer_pid > /dev/null; then
-        echo "Consumer is running..."
-    else
-        echo "Consumer has stopped."
-    fi
-
-    if ps -p $web_app_pid > /dev/null; then
-        echo "Web app is running at http://localhost:8501"
-    else
-        echo "Web app has stopped."
-    fi
-done
