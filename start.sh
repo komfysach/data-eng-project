@@ -1,6 +1,10 @@
 #!/bin/bash
 
-# Step 1: Install dependencies
+# Step 1: Spin up Docker containers
+echo "Starting Docker containers..."
+docker-compose up -d
+
+# Step 2: Install dependencies
 echo "Installing dependencies..."
 py -m pip install -r requirements.txt
 if [ $? -ne 0 ]; then
@@ -10,7 +14,7 @@ else
     echo "Dependencies installed successfully."
 fi
 
-# Step 2: Run tests
+# Step 3: Run tests
 echo "Running tests..."
 py -m unittest producer.test_producer
 py -m unittest consumer.test_consumer
@@ -20,10 +24,6 @@ if [ $? -ne 0 ]; then
 else
     echo "All tests passed. Proceeding with deployment."
 fi
-
-# Step 3: Spin up Docker containers
-echo "Starting Docker containers..."
-docker-compose up -d
 
 # Step 4: Wait for InfluxDB to be ready
 echo "Waiting for InfluxDB to initialize..."
@@ -39,7 +39,7 @@ echo
 
 # Load environment variables from .env file and set up InfluxDB
 envFilePath=".env"
-if [ -f "$envFilePath" ]; then
+if [ -f "$envFilePath" ]; thendo
     source $envFilePath
 fi
 

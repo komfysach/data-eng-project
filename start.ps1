@@ -1,4 +1,8 @@
-# Step 1: Install dependencies
+# Step 1: Spin up Docker containers
+Write-Host "Starting Docker containers..."
+docker-compose up -d
+
+# Step 2: Install dependencies
 Write-Host "Installing dependencies..."
 py -m pip install -r requirements.txt
 if ($LASTEXITCODE -ne 0) {
@@ -8,7 +12,7 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host "Dependencies installed successfully."
 }
 
-# Step 2: Run tests
+# Step 3: Run tests
 Write-Host "Running tests..."
 py -m unittest producer.test_producer
 py -m unittest consumer.test_consumer
@@ -18,10 +22,6 @@ if ($LASTEXITCODE -ne 0) {
 } else {
     Write-Host "All tests passed. Proceeding with deployment."
 }
-
-# Step 3: Spin up Docker containers
-Write-Host "Starting Docker containers..."
-docker-compose up -d
 
 # Step 4: Wait for InfluxDB to be ready
 Write-Host "Waiting for InfluxDB to initialize..."
